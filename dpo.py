@@ -13,39 +13,54 @@ from utils import *
 import warnings
 from trl import DPOTrainer
 
+try:
+    from unsloth import FastLanguageModel
+except ImportError:
+    pass
+
+
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 warnings.filterwarnings("ignore")
 
 
 def main(args):
-    if args.use_qlora:
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
+    if not args.use_unsloth:
+        if args.quantize:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+        else:
+            bnb_config = None
+
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            token=args.hf_token,
+            torch_dtype=torch.bfloat16,
+            quantization_config=bnb_config,
+            trust_remote_code=args.trust_remote_code,
+            attn_implementation=args.attn_implementation,
+            low_cpu_mem_usage=args.low_cpu_mem_usage,
+            use_cache=False if args.gradient_checkpointing else True,
+            device_map=get_kbit_device_map() if args.quantize else None,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model,
+            use_fast=False,
+            token=args.hf_token,
+            trust_remote_code=args.trust_remote_code,
         )
     else:
-        bnb_config = None
-
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        token=args.hf_token,
-        torch_dtype=torch.bfloat16,
-        quantization_config=bnb_config,
-        trust_remote_code=args.trust_remote_code,
-        attn_implementation=args.attn_implementation,
-        low_cpu_mem_usage=args.low_cpu_mem_usage,
-        use_cache=False if args.gradient_checkpointing else True,
-        device_map=get_kbit_device_map() if args.use_qlora else None,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.model,
-        use_fast=False,
-        token=args.hf_token,
-        trust_remote_code=args.trust_remote_code,
-    )
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=args.model,
+            max_seq_length=args.max_seq_length,
+            load_in_4bit=args.quantize,
+            token=args.hf_token,
+            dtype=None,
+        )
 
     if "mistral" in args.model or "Llama-2" in args.model:
         tokenizer.chat_template = FALLBACK_CHAT_TEMPLATE_MISTRAL
@@ -168,14 +183,27 @@ def main(args):
     if args.lora_target_modules[0] == "all-linear":
         args.lora_target_modules = "all-linear"
 
-    peft_config = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        target_modules=args.lora_target_modules,
-        task_type="CAUSAL_LM",
-        bias="none",
-    )
+    if not args.use_unsloth:
+        peft_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=args.lora_target_modules,
+            task_type="CAUSAL_LM",
+            bias="none",
+        )
+    else:
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=args.lora_target_modules,
+            bias="none",
+            random_state=3407,
+            use_gradient_checkpointing=args.gradient_checkpointing,
+        )
+        peft_config = None
 
     train_args = TrainingArguments(
         do_eval=args.do_eval,
@@ -207,12 +235,12 @@ def main(args):
     )
 
     trainer = DPOTrainer(
-        model,
         args=train_args,
+        model=model,
         ref_model=None,
         peft_config=peft_config,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        eval_dataset=eval_dataset,  
         tokenizer=tokenizer,
         max_length=args.max_seq_length,
         max_prompt_length=(args.max_seq_length * 2),

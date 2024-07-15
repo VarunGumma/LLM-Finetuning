@@ -1,5 +1,5 @@
 #!/bin/bash 
-HF_TOKEN="<your-hf-token>"
+HF_TOKEN="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"
 MODEL="microsoft/Phi-3-mini-128k-instruct"
 
 accelerate launch \
@@ -11,9 +11,10 @@ accelerate launch \
     sft.py \
     --task sft \
     --do_eval \
+    --use_sloth \
     --low_cpu_mem_usage \
-    --train_local_dataset "data/sft/train" \
-    --eval_local_dataset "data/sft/test" \
+    --train_local_dataset "processed_data/sft/train" \
+    --eval_local_dataset "processed_data/sft/test" \
     --gradient_checkpointing \
     --model $MODEL \
     --attn_implementation flash_attention_2 \
@@ -23,19 +24,19 @@ accelerate launch \
     --lora_dropout 0.1 \
     --lora_target_modules all-linear \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 2 \
-    --gradient_accumulation_steps 16 \
+    --per_device_train_batch_size 16 \
+    --gradient_accumulation_steps 2 \
     --learning_rate 1e-4 \
     --warmup_ratio 0.03 \
     --weight_decay 0.0 \
-    --optimizer adamw_torch_fused \
-    --lr_scheduler_type cosine \
+    --optimizer adamw_bnb_8bit \
+    --lr_scheduler_type linear \
     --max_grad_norm 1.0 \
     --bf16 \
     --tf32 \
     --hf_token $HF_TOKEN \
     --trust_remote_code \
-    --report_to wandb \
+    --report_to none \
     --save_total_limit 1 \
     --logging_steps 10 \
     --save_steps 500 \
