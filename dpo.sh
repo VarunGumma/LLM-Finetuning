@@ -1,5 +1,5 @@
 #!/bin/bash 
-HF_TOKEN="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"
+HF_TOKEN="YOUR_HF_TOKEN"
 MODEL="microsoft/Phi-3-mini-128k-instruct"
 
 accelerate launch \
