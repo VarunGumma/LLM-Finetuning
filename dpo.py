@@ -7,7 +7,6 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     BitsAndBytesConfig,
-    TrainingArguments,
 )
 
 from utils import *
@@ -60,12 +59,6 @@ def main(args):
             token=os.environ["HF_TOKEN"],
             dtype=None,
         )
-
-    if "mistral" in args.model or "Llama-2" in args.model:
-        tokenizer.chat_template = FALLBACK_CHAT_TEMPLATE_MISTRAL
-        
-    if "gemma" in args.model:
-        tokenizer.chat_template = FALLBACK_CHAT_TEMPLATE_GEMMA
 
     print(f" | > Model: {model}")
 

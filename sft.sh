@@ -1,5 +1,5 @@
 #!/bin/bash 
-MODEL="microsoft/Phi-3-mini-128k-instruct"
+MODEL="TinyLlama/TinyLlama_v1.1"
 
 accelerate launch \
     --mixed_precision bf16 \
@@ -10,6 +10,7 @@ accelerate launch \
     sft.py \
     --task sft \
     --do_eval \
+    --quantize \
     --train_local_dataset "processed_data/sft/train" \
     --eval_local_dataset "processed_data/sft/test" \
     --gradient_checkpointing \

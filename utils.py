@@ -15,7 +15,7 @@ def get_arg_parser():
         "--model", type=str, required=True, help="Hugging Face model id"
     )
     parser.add_argument(
-        "--lora_dir", type=str, default=None, help="Pretrained LoRA adapters directory"
+        "--use_lora", action="store_true", help="Use PEFT"
     )
     parser.add_argument("--lora_r", type=int, default=256, help="LoRA rank")
     parser.add_argument("--lora_alpha", type=int, default=512, help="LoRA alpha")
@@ -176,52 +176,26 @@ def get_arg_parser():
 
 ########################################################################################################################################################################
 
-FALLBACK_CHAT_TEMPLATE_MISTRAL = "{{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token}}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}"
-FALLBACK_CHAT_TEMPLATE_GEMMA = "{{ bos_token }}{% if messages[0]['role'] == 'system' %}{{ raise_exception('System role not supported') }}{% endif %}{% for message in messages %}{% if (message['role'] == 'assistant') %}{% set role = 'model' %}{% else %}{% set role = message['role'] %}{% endif %}{{ '<start_of_turn>' + role + '\n' + message['content'] | trim + '<end_of_turn>\n' }}{% endfor %}{% if add_generation_prompt %}{{'<start_of_turn>model\n'}}{% endif %}"
-
-
-def is_system_role_supported(tokenizer):
-    messages = [
-        {"content": "system", "role": "This is a system message"},
-        {"content": "user", "role": "This is a user message"},
-        {"content": "assistant", "role": "This is an assistant message"},
-    ]
-
-    try:
-        _ = tokenizer.apply_chat_template(messages, tokenize=False)
-    except Exception:
-        return False
-    
-    return True
-
-
-def to_messages(example, has_system_prompt=True):
-    if not has_system_prompt:
-        user_content = f"{example['instruction']}\n\n{example['input']}"
-        assistant_content = example["output"]
-        messages = [
-            {"content": user_content, "role": "user"},
-            {"content": assistant_content, "role": "assistant"},
-        ]
-    else:
-        system_content = example["instruction"]
-        user_content = example["input"]
-        assistant_content = example["output"]
-        messages = [
-            {"content": system_content, "role": "system"},
-            {"content": user_content, "role": "user"},
-            {"content": assistant_content, "role": "assistant"},
-        ]
-    example["messages"] = messages
-    return example
-
+CHAT_TEMPLATE = """
+<|im_start|>system
+{instruction}<|im_end|>
+<|im_start|>user
+{input}<|im_end|>
+<|im_start|>assistant
+{response}<|im_end|>
+"""
 
 def apply_chat_template(example, tokenizer, task="sft"):
     if task == "sft":
-        example["text"] = tokenizer.apply_chat_template(
-            example["messages"], tokenize=False, add_generation_prompt=False
+        # this uses the custom chat template for a base model
+        # this is not recommended if you are using a IFT'ed model
+        example["text"] = CHAT_TEMPLATE.format(
+            instruction=example["instruction"],
+            input=example["input"],
+            response=example["response"],
         )
     elif task == "dpo":
+        # this is function uses the native chat template of the IFT'ed model
         prompt_messages = example["chosen"][:-1]
         chosen_messages = example["chosen"][-1:]
         rejected_messages = example["rejected"][-1:]
@@ -248,19 +222,7 @@ def get_kbit_device_map():
     return {"": get_current_device()} if torch.cuda.is_available() else None
 
 
-def get_response_template_ids(tokenizer, model_name):
-
-    if "Phi-3" in model_name:
-        response_template_context = "<|assistant|>\n"
-    elif "gemma" in model_name:
-        response_template_context = "<start_of_turn>model\n"
-    elif "Llama-3" in model_name:
-        response_template_context = "<|start_header_id|>assistant<|end_header_id|>\n\n"
-    else:
-        response_template_context = "[/INST]"
-
-    response_template_ids = tokenizer.encode(
-        response_template_context, add_special_tokens=False
+def get_response_template_ids(tokenizer):
+    return tokenizer.encode(
+        "<|im_start|>assistant\n", add_special_tokens=False
     )
-
-    return response_template_ids

@@ -8,7 +8,6 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     BitsAndBytesConfig,
-    TrainingArguments,
 )
 
 from utils import *
@@ -120,7 +119,7 @@ def main(args):
         eval_dataset = None
 
     data_collator = DataCollatorForCompletionOnlyLM(
-        response_template=get_response_template_ids(tokenizer, args.model),
+        response_template=get_response_template_ids(tokenizer),
         tokenizer=tokenizer,
         mlm=False,
     )
@@ -128,27 +127,29 @@ def main(args):
     if args.lora_target_modules[0] == "all-linear":
         args.lora_target_modules = "all-linear"
 
-    if not args.use_unsloth:
-        peft_config = LoraConfig(
-            r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            lora_dropout=args.lora_dropout,
-            target_modules=args.lora_target_modules,
-            task_type="CAUSAL_LM",
-            bias="none",
-        )
-    else:
-        model = FastLanguageModel.get_peft_model(
-            model,
-            bias="none",
-            r=args.lora_r,
-            random_state=3407,
-            lora_alpha=args.lora_alpha,
-            lora_dropout=args.lora_dropout,
-            target_modules=args.lora_target_modules,
-            use_gradient_checkpointing=args.gradient_checkpointing,
-        )
-        peft_config = None
+    peft_config = None
+
+    if args.use_lora:
+        if not args.use_unsloth:
+            peft_config = LoraConfig(
+                r=args.lora_r,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout,
+                target_modules=args.lora_target_modules,
+                task_type="CAUSAL_LM",
+                bias="none",
+            )
+        else:
+            model = FastLanguageModel.get_peft_model(
+                model,
+                bias="none",
+                r=args.lora_r,
+                random_state=3407,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout,
+                target_modules=args.lora_target_modules,
+                use_gradient_checkpointing=args.gradient_checkpointing,
+            )
 
     sft_args = SFTConfig(
         seed=42,
