@@ -143,9 +143,6 @@ def get_arg_parser():
         "--trust_remote_code", action="store_true", help="trust remote code"
     )
     parser.add_argument(
-        "--hf_token", type=str, required=True, help="Hugging Face token"
-    )
-    parser.add_argument(
         "--max_seq_length", type=int, default=4096, help="Maximum sequence length"
     )
     parser.add_argument(
@@ -165,6 +162,12 @@ def get_arg_parser():
         default=10,
         help="Patience for early stopping",
     )
+    parser.add_argument(
+        "--neftune_noise_alpha",
+        type=int,
+        default=None,
+        help="Neftune noise alpha",
+    )
     ## For DPO ##
     parser.add_argument("--beta", type=float, default=0.1, help="Loss Beta")
     parser.add_argument("--loss_type", type=str, default="sigmoid", help="Loss type")
@@ -175,6 +178,21 @@ def get_arg_parser():
 
 FALLBACK_CHAT_TEMPLATE_MISTRAL = "{{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token}}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}"
 FALLBACK_CHAT_TEMPLATE_GEMMA = "{{ bos_token }}{% if messages[0]['role'] == 'system' %}{{ raise_exception('System role not supported') }}{% endif %}{% for message in messages %}{% if (message['role'] == 'assistant') %}{% set role = 'model' %}{% else %}{% set role = message['role'] %}{% endif %}{{ '<start_of_turn>' + role + '\n' + message['content'] | trim + '<end_of_turn>\n' }}{% endfor %}{% if add_generation_prompt %}{{'<start_of_turn>model\n'}}{% endif %}"
+
+
+def is_system_role_supported(tokenizer):
+    messages = [
+        {"content": "system", "role": "This is a system message"},
+        {"content": "user", "role": "This is a user message"},
+        {"content": "assistant", "role": "This is an assistant message"},
+    ]
+
+    try:
+        _ = tokenizer.apply_chat_template(messages, tokenize=False)
+    except Exception:
+        return False
+    
+    return True
 
 
 def to_messages(example, has_system_prompt=True):

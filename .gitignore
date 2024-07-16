@@ -1,2 +1,6 @@
+.env
+
 raw_data/
+output/
 processed_data/
+__pycache__/

@@ -1,5 +1,4 @@
 #!/bin/bash 
-HF_TOKEN="YOUR_HF_TOKEN"
 MODEL="microsoft/Phi-3-mini-128k-instruct"
 
 accelerate launch \
@@ -9,11 +8,11 @@ accelerate launch \
     --use_deepspeed \
     --deepspeed_config_file "ds_configs/stage3_no_offloading_accelerate.conf" \
     dpo.py \
+    --task dpo \
+    --do_eval \
     --train_local_dataset processed_data/dpo/train \
     --eval_local_dataset processed_data/dpo/test \
     --model $MODEL \
-    --task dpo \
-    --do_eval \
     --attn_implementation flash_attention_2 \
     --output_dir "output/dpo/${MODEL}" \
     --lora_r 256 \
@@ -22,8 +21,8 @@ accelerate launch \
     --lora_target_modules all-linear \
     --gradient_checkpointing \
     --num_train_epochs 3 \
-    --per_device_train_batch_size 16 \
-    --gradient_accumulation_steps 2 \
+    --per_device_train_batch_size 4 \
+    --gradient_accumulation_steps 8 \
     --learning_rate 1e-6 \
     --warmup_ratio 0.03 \
     --weight_decay 0.0 \
@@ -34,7 +33,6 @@ accelerate launch \
     --tf32 \
     --beta 0.1 \
     --loss_type ipo \
-    --hf_token $HF_TOKEN \
     --trust_remote_code \
     --report_to none \
     --save_total_limit 1 \

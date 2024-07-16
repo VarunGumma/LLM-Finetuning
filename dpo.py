@@ -1,6 +1,7 @@
+import os
 import torch
 import datasets
-from peft import LoraConfig, PeftModel
+from peft import LoraConfig
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
@@ -11,17 +12,13 @@ from transformers import (
 
 from utils import *
 import warnings
-from trl import DPOTrainer
-
-try:
-    from unsloth import FastLanguageModel
-except ImportError:
-    pass
-
+from trl import DPOTrainer, DPOConfig
+from dotenv import load_dotenv
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 warnings.filterwarnings("ignore")
+load_dotenv()
 
 
 def main(args):
@@ -38,7 +35,7 @@ def main(args):
 
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
-            token=args.hf_token,
+            token=os.environ["HF_TOKEN"],
             torch_dtype=torch.bfloat16,
             quantization_config=bnb_config,
             trust_remote_code=args.trust_remote_code,
@@ -50,15 +47,17 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained(
             args.model,
             use_fast=False,
-            token=args.hf_token,
+            token=os.environ["HF_TOKEN"],
             trust_remote_code=args.trust_remote_code,
         )
     else:
+        from unsloth import FastLanguageModel
+
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=args.model,
             max_seq_length=args.max_seq_length,
             load_in_4bit=args.quantize,
-            token=args.hf_token,
+            token=os.environ["HF_TOKEN"],
             dtype=None,
         )
 
@@ -69,11 +68,6 @@ def main(args):
         tokenizer.chat_template = FALLBACK_CHAT_TEMPLATE_GEMMA
 
     print(f" | > Model: {model}")
-
-    if args.lora_dir is not None:
-        print(f" | > Loading LoRA adapters from {args.lora_dir}")
-        model = PeftModel.from_pretrained(model, args.lora_dir)
-        model = model.merge_and_unload()
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -195,17 +189,17 @@ def main(args):
     else:
         model = FastLanguageModel.get_peft_model(
             model,
+            bias="none",
             r=args.lora_r,
+            random_state=3407,
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             target_modules=args.lora_target_modules,
-            bias="none",
-            random_state=3407,
             use_gradient_checkpointing=args.gradient_checkpointing,
         )
         peft_config = None
 
-    train_args = TrainingArguments(
+    dpo_args = DPOConfig(
         do_eval=args.do_eval,
         optim=args.optimizer,
         lr_scheduler_type=args.lr_scheduler_type,
@@ -232,20 +226,20 @@ def main(args):
         load_best_model_at_end=True,
         metric_for_best_model=args.metric_for_best_model,
         greater_is_better=args.greater_is_better,
+        max_prompt_length=(args.max_seq_length * 2),
+        beta=args.beta,
+        loss_type=args.loss_type,
+        max_length=args.max_seq_length,
     )
 
     trainer = DPOTrainer(
-        args=train_args,
+        args=dpo_args,
         model=model,
         ref_model=None,
         peft_config=peft_config,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,  
         tokenizer=tokenizer,
-        max_length=args.max_seq_length,
-        max_prompt_length=(args.max_seq_length * 2),
-        beta=args.beta,
-        loss_type=args.loss_type,
     )
 
     try:

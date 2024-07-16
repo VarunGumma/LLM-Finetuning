@@ -1,3 +1,4 @@
+import os
 import torch
 import datasets
 import warnings
@@ -11,20 +12,16 @@ from transformers import (
 )
 
 from utils import *
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-
-try:
-    from unsloth import FastLanguageModel
-except ImportError:
-    pass
+from dotenv import load_dotenv
+from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 warnings.filterwarnings("ignore")
+load_dotenv()
 
 
 def main(args):
-    # BitsAndBytesConfig int-4 config
     if not args.use_unsloth:
         if args.quantize:
             bnb_config = BitsAndBytesConfig(
@@ -38,8 +35,8 @@ def main(args):
 
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
-            token=args.hf_token,
             torch_dtype=torch.bfloat16,
+            token=os.environ["HF_TOKEN"],
             quantization_config=bnb_config,
             trust_remote_code=args.trust_remote_code,
             attn_implementation=args.attn_implementation,
@@ -50,15 +47,17 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained(
             args.model,
             use_fast=True,
-            token=args.hf_token,
+            token=os.environ["HF_TOKEN"],
             trust_remote_code=args.trust_remote_code,
         )
     else:
+        from unsloth import FastLanguageModel
+
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=args.model,
             max_seq_length=args.max_seq_length,
             load_in_4bit=args.quantize,
-            token=args.hf_token,
+            token=os.environ["HF_TOKEN"],
             dtype=None,
         )
 
@@ -141,17 +140,17 @@ def main(args):
     else:
         model = FastLanguageModel.get_peft_model(
             model,
+            bias="none",
             r=args.lora_r,
+            random_state=3407,
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             target_modules=args.lora_target_modules,
-            bias="none",
-            random_state=3407,
             use_gradient_checkpointing=args.gradient_checkpointing,
         )
         peft_config = None
 
-    train_args = TrainingArguments(
+    sft_args = SFTConfig(
         seed=42,
         do_eval=args.do_eval,
         optim=args.optimizer,
@@ -179,20 +178,23 @@ def main(args):
         load_best_model_at_end=True,
         metric_for_best_model=args.metric_for_best_model,
         greater_is_better=args.greater_is_better,
+        max_seq_length=args.max_seq_length,
+        packing=False,
+        eval_packing=False,
+        dataset_text_field="text",
+        neftune_noise_alpha=args.neftune_noise_alpha,
+        dataset_num_proc=args.dataset_num_proc,
+
     )
 
     trainer = SFTTrainer(
         model=model,
-        args=train_args,
+        args=sft_args,
         peft_config=peft_config,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
-        data_collator=data_collator,
-        max_seq_length=args.max_seq_length,
-        packing=False,  # Can make training 5x faster for short sequences.
-        dataset_text_field="text",
-        dataset_num_proc=args.dataset_num_proc,
+        data_collator=data_collator
     )
 
     try:
