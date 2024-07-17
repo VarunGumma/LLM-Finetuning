@@ -1,5 +1,6 @@
 import os
 import torch
+import wandb
 import datasets
 from peft import LoraConfig
 from datasets import load_dataset
@@ -193,6 +194,7 @@ def main(args):
         peft_config = None
 
     dpo_args = DPOConfig(
+        seed=3407,
         do_eval=args.do_eval,
         optim=args.optimizer,
         lr_scheduler_type=args.lr_scheduler_type,
@@ -239,6 +241,7 @@ def main(args):
         trainer.train()
     except KeyboardInterrupt:
         print("Training interrupted ...")
+        wandb.finish()
 
     print(" | > Training complete. Saving model ...")
     model.save_pretrained(f"{args.output_dir}/best")

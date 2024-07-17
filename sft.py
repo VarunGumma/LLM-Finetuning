@@ -2,6 +2,7 @@ import os
 import torch
 import datasets
 import warnings
+import wandb
 from peft import LoraConfig
 from datasets import load_dataset
 from transformers import (
@@ -63,13 +64,14 @@ def main(args):
     print(f" | > Model: {model}")
 
     if tokenizer.pad_token is None:
-        # Setting to eos token might be a slight issue sometimes
-        # as pointed here: https://github.com/prometheus-eval/prometheus-eval/blob/main/train/scripts/run_sft.py
         print(" | > Setting pad token to eos token")
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     tokenizer.padding_side = "right"
+
+    print(" | > Setting up chat template")
+    tokenizer.chat_template = DEFAULT_CHAT_TEMPLATE
 
     if args.train_hf_dataset is not None:
         print(
@@ -152,7 +154,7 @@ def main(args):
             )
 
     sft_args = SFTConfig(
-        seed=42,
+        seed=3407,
         do_eval=args.do_eval,
         optim=args.optimizer,
         lr_scheduler_type=args.lr_scheduler_type,
@@ -180,12 +182,9 @@ def main(args):
         metric_for_best_model=args.metric_for_best_model,
         greater_is_better=args.greater_is_better,
         max_seq_length=args.max_seq_length,
-        packing=False,
-        eval_packing=False,
         dataset_text_field="text",
         neftune_noise_alpha=args.neftune_noise_alpha,
         dataset_num_proc=args.dataset_num_proc,
-
     )
 
     trainer = SFTTrainer(
@@ -202,6 +201,7 @@ def main(args):
         trainer.train()
     except KeyboardInterrupt:
         print("Training interrupted ...")
+        wandb.finish()
 
     print(" | > Training complete. Saving model ...")
     model.save_pretrained(f"{args.output_dir}/best")

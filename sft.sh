@@ -1,4 +1,3 @@
-#!/bin/bash 
 MODEL="TinyLlama/TinyLlama_v1.1"
 
 accelerate launch \
@@ -10,31 +9,26 @@ accelerate launch \
     sft.py \
     --task sft \
     --do_eval \
-    --quantize \
     --train_local_dataset "processed_data/sft/train" \
     --eval_local_dataset "processed_data/sft/test" \
-    --gradient_checkpointing \
     --model $MODEL \
+    --gradient_checkpointing \
     --attn_implementation flash_attention_2 \
     --output_dir "output/sft/${MODEL}" \
-    --lora_r 256 \
-    --lora_alpha 512 \
-    --lora_dropout 0.1 \
-    --lora_target_modules all-linear \
-    --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --gradient_accumulation_steps 8 \
-    --learning_rate 1e-4 \
+    --num_train_epochs 4 \
+    --per_device_train_batch_size 8 \
+    --gradient_accumulation_steps 16 \
+    --learning_rate 1e-5 \
     --warmup_ratio 0.03 \
-    --weight_decay 0.0 \
-    --optimizer adamw_bnb_8bit \
-    --lr_scheduler_type linear \
+    --weight_decay 0.1 \
+    --optimizer adamw_torch \
+    --lr_scheduler_type cosine \
     --max_grad_norm 1.0 \
     --neftune_noise_alpha 5 \
     --bf16 \
     --tf32 \
     --trust_remote_code \
-    --report_to none \
+    --report_to wandb \
     --save_total_limit 1 \
     --logging_steps 10 \
     --save_steps 500 \

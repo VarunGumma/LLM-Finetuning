@@ -2,5 +2,6 @@
 
 raw_data/
 output/
+wandb/
 processed_data/
 __pycache__/

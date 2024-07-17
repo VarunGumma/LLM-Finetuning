@@ -14,9 +14,7 @@ def get_arg_parser():
     parser.add_argument(
         "--model", type=str, required=True, help="Hugging Face model id"
     )
-    parser.add_argument(
-        "--use_lora", action="store_true", help="Use PEFT"
-    )
+    parser.add_argument("--use_lora", action="store_true", help="Use PEFT")
     parser.add_argument("--lora_r", type=int, default=256, help="LoRA rank")
     parser.add_argument("--lora_alpha", type=int, default=512, help="LoRA alpha")
     parser.add_argument("--lora_dropout", type=float, default=0.1, help="LoRA dropout")
@@ -27,7 +25,9 @@ def get_arg_parser():
         default="all-linear",
         help="LoRA target modules",
     )
-    parser.add_argument("--quantize", action="store_true", help="Quantize the model to 4-bit")
+    parser.add_argument(
+        "--quantize", action="store_true", help="Quantize the model to 4-bit"
+    )
     parser.add_argument("--use_unsloth", action="store_true", help="Use UnSloth models")
     parser.add_argument(
         "--attn_implementation",
@@ -176,38 +176,28 @@ def get_arg_parser():
 
 ########################################################################################################################################################################
 
-CHAT_TEMPLATE = """
-<|im_start|>system
-{instruction}<|im_end|>
-<|im_start|>user
-{input}<|im_end|>
-<|im_start|>assistant
-{response}<|im_end|>
-"""
+DEFAULT_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"
+
 
 def apply_chat_template(example, tokenizer, task="sft"):
     if task == "sft":
         # this uses the custom chat template for a base model
         # this is not recommended if you are using a IFT'ed model
-        example["text"] = CHAT_TEMPLATE.format(
-            instruction=example["instruction"],
-            input=example["input"],
-            response=example["response"],
+        example["text"] = tokenizer.apply_chat_template(
+            example["messages"], tokenize=False
         )
+        return example
+
     elif task == "dpo":
         # this is function uses the native chat template of the IFT'ed model
-        prompt_messages = example["chosen"][:-1]
-        chosen_messages = example["chosen"][-1:]
-        rejected_messages = example["rejected"][-1:]
-
         example["text_chosen"] = tokenizer.apply_chat_template(
-            chosen_messages, tokenize=False
+            example["chosen"][-1:], tokenize=False
         )
         example["text_rejected"] = tokenizer.apply_chat_template(
-            rejected_messages, tokenize=False
+            example["rejected"][-1:], tokenize=False
         )
         example["text_prompt"] = tokenizer.apply_chat_template(
-            prompt_messages, tokenize=False
+            example["chosen"][:-1], tokenize=False
         )
     else:
         raise ValueError(f"Invalid task: {task}")
@@ -223,6 +213,4 @@ def get_kbit_device_map():
 
 
 def get_response_template_ids(tokenizer):
-    return tokenizer.encode(
-        "<|im_start|>assistant\n", add_special_tokens=False
-    )
+    return tokenizer.encode("\n<|assistant|>", add_special_tokens=False)
