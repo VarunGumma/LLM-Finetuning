@@ -1,4 +1,5 @@
 MODEL="TinyLlama/TinyLlama_v1.1"
+rm -rf output/sft/${MODEL}
 
 accelerate launch \
     --mixed_precision bf16 \

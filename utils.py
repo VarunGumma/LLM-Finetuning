@@ -28,7 +28,6 @@ def get_arg_parser():
     parser.add_argument(
         "--quantize", action="store_true", help="Quantize the model to 4-bit"
     )
-    parser.add_argument("--use_unsloth", action="store_true", help="Use UnSloth models")
     parser.add_argument(
         "--attn_implementation",
         type=str,

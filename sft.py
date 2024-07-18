@@ -22,44 +22,33 @@ load_dotenv()
 
 
 def main(args):
-    if not args.use_unsloth:
-        if args.quantize:
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-            )
-        else:
-            bnb_config = None
-
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model,
-            torch_dtype=torch.bfloat16,
-            token=os.environ["HF_TOKEN"],
-            quantization_config=bnb_config,
-            trust_remote_code=args.trust_remote_code,
-            attn_implementation=args.attn_implementation,
-            low_cpu_mem_usage=args.low_cpu_mem_usage,
-            use_cache=False if args.gradient_checkpointing else True,
-            device_map=get_kbit_device_map() if args.quantize else None,
-        )
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.model,
-            use_fast=True,
-            token=os.environ["HF_TOKEN"],
-            trust_remote_code=args.trust_remote_code,
+    if args.quantize:
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
         )
     else:
-        from unsloth import FastLanguageModel
+        bnb_config = None
 
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=args.model,
-            max_seq_length=args.max_seq_length,
-            load_in_4bit=args.quantize,
-            token=os.environ["HF_TOKEN"],
-            dtype=None,
-        )
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model,
+        torch_dtype=torch.bfloat16,
+        token=os.environ["HF_TOKEN"],
+        quantization_config=bnb_config,
+        trust_remote_code=args.trust_remote_code,
+        attn_implementation=args.attn_implementation,
+        low_cpu_mem_usage=args.low_cpu_mem_usage,
+        use_cache=False if args.gradient_checkpointing else True,
+        device_map=get_kbit_device_map() if args.quantize else None,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model,
+        use_fast=True,
+        token=os.environ["HF_TOKEN"],
+        trust_remote_code=args.trust_remote_code,
+    )
 
     print(f" | > Model: {model}")
 
@@ -132,26 +121,14 @@ def main(args):
     peft_config = None
 
     if args.use_lora:
-        if not args.use_unsloth:
-            peft_config = LoraConfig(
-                r=args.lora_r,
-                lora_alpha=args.lora_alpha,
-                lora_dropout=args.lora_dropout,
-                target_modules=args.lora_target_modules,
-                task_type="CAUSAL_LM",
-                bias="none",
-            )
-        else:
-            model = FastLanguageModel.get_peft_model(
-                model,
-                bias="none",
-                r=args.lora_r,
-                random_state=3407,
-                lora_alpha=args.lora_alpha,
-                lora_dropout=args.lora_dropout,
-                target_modules=args.lora_target_modules,
-                use_gradient_checkpointing=args.gradient_checkpointing,
-            )
+        peft_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=args.lora_target_modules,
+            task_type="CAUSAL_LM",
+            bias="none",
+        )
 
     sft_args = SFTConfig(
         seed=3407,
@@ -194,7 +171,7 @@ def main(args):
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
-        data_collator=data_collator
+        data_collator=data_collator,
     )
 
     try:
